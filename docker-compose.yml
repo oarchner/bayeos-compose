@@ -13,7 +13,7 @@ services:
       - QDB_TELEMETRY_ENABLED=false
       - QDB_LOG_W_STDOUT_LEVEL=${QDB_LOG_LEVEL:-ERROR}
     volumes:
-      - questdb_data:/var/lib/questdb
+      - ${QUESTDB_DATA_DIR:-questdb_data}:/var/lib/questdb
 
   jaeger:
     image: jaegertracing/jaeger:2.20.0
@@ -55,7 +55,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgresdb_data:/var/lib/postgresql/data
+      - ${POSTGRES_DATA_DIR:-postgresdb_data}:/var/lib/postgresql/data
 
   bayeos-api:
     image: ${BAYEOS_API_IMAGE:-oarchner/bayeos-api:latest}
