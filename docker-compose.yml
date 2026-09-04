@@ -65,7 +65,7 @@ services:
       MIGRATIONS_PATH: /migrations
 
       PG_DB_URL: postgres://${POSTGRES_USER:-bayeos}:${POSTGRES_PASSWORD:-bayeos}@postgresdb:5432/${POSTGRES_DB:-bayeos}
-      QUEST_DB_URL: ${QUEST_DB_URL:-postgresql://admin:quest@localhost:8812/qdb?sslmode=disable}
+      QUEST_DB_URL: ${QUEST_DB_URL:-postgresql://admin:quest@questdb:8812/qdb?sslmode=disable}
 
       WS_API_PORT: ${WS_API_PORT:-5532}
       WS_TRUSTED_PROXIES: ${WS_TRUSTED_PROXIES:-}
