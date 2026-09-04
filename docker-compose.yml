@@ -1,0 +1,105 @@
+name: bayeos-compose
+
+services:
+  questdb:
+    image: questdb/questdb:latest
+    container_name: bayeos_questdb
+    restart: unless-stopped
+    ports:
+      - "9000:9000" # Web-Konsole und REST-API
+      - "9009:9009" # InfluxDB Line Protocol (ILP) für schnelle Ingestion
+      - "8812:8812" # PostgreSQL Wire Protocol (PGWire) für SQL-Zugriff
+    environment:
+      - QDB_TELEMETRY_ENABLED=false
+      - QDB_LOG_W_STDOUT_LEVEL=${QDB_LOG_LEVEL:-ERROR}
+    volumes:
+      - questdb_data:/var/lib/questdb
+
+  jaeger:
+    image: jaegertracing/jaeger:2.20.0
+    container_name: bayeos_jaeger
+    command: ["--config=/jaeger/config.yaml"]
+    restart: unless-stopped
+    volumes:
+      - ./jaeger-config.yaml:/jaeger/config.yaml:ro
+    ports:
+      - "16686:16686"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.142.0
+    container_name: bayeos_otel_collector
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    restart: unless-stopped
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC
+    depends_on:
+      jaeger:
+        condition: service_started
+
+  postgresdb:
+    image: postgres:latest
+    container_name: bayeos_postgresdb
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bayeos}
+      POSTGRES_USER: ${POSTGRES_USER:-bayeos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bayeos}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgresdb_data:/var/lib/postgresql/data
+
+  bayeos-api:
+    image: ${BAYEOS_API_IMAGE:-oarchner/bayeos-api:latest}
+    container_name: bayeos_api
+    restart: unless-stopped
+    environment:
+      MIGRATIONS_PATH: /migrations
+
+      PG_DB_URL: postgres://${POSTGRES_USER:-bayeos}:${POSTGRES_PASSWORD:-bayeos}@postgresdb:5432/${POSTGRES_DB:-bayeos}
+
+      QUEST_DB_URL: ${QUEST_DB_URL:-http://questdb:9000}
+      QUEST_ILP_URL: ${QUEST_ILP_URL:-http://questdb:9009}
+      QUEST_REST_URL: ${QUEST_REST_URL:-http://questdb:9000}
+
+      WS_API_PORT: ${WS_API_PORT:-5532}
+      WS_TRUSTED_PROXIES: ${WS_TRUSTED_PROXIES:-}
+      WS_LOG_LEVEL: ${WS_LOG_LEVEL:-info}
+      WS_RESPONSE_DELAY: ${WS_RESPONSE_DELAY:-0}
+      WS_CORS_HEADER: ${WS_CORS_HEADER:-false}
+      WS_ASSETS_PATH: ${WS_ASSETS_PATH:-/assets}
+      WS_API_KEY: ${WS_API_KEY:-ChangeThisApiKey}
+      WS_GIN_MODE: ${WS_GIN_MODE:-release}
+      WS_ID_TOKEN_EXPIRES_DAYS: ${WS_ID_TOKEN_EXPIRES_DAYS:-120}
+      WS_LDAP_ENABLED: ${WS_LDAP_ENABLED:-false}
+      WS_LDAP_URL: ${WS_LDAP_URL:-ldaps://localhost:636}
+      WS_LDAP_BASE: ${WS_LDAP_BASE:-dc=my-company,dc=com}
+      WS_LDAP_SIGNIN_ATTRIBUTE: ${WS_LDAP_SIGNIN_ATTRIBUTE:-cn}
+      WS_LDAP_DISPLAY_ATTRIBUTE: ${WS_LDAP_DISPLAY_ATTRIBUTE:-displayName}
+      WS_LDAP_EMAIL_ATTRIBUTE: ${WS_LDAP_EMAIL_ATTRIBUTE:-mail}
+
+      OTEL_SERVICE_NAME: bayeos-api
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+
+    ports:
+      - "5532:5532"
+
+    depends_on:
+      questdb:
+        condition: service_started
+      postgresdb:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+volumes:
+  questdb_data:
+  postgresdb_data:
